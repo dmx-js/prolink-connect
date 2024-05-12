@@ -1,24 +1,24 @@
 {
-  "compilerOptions": {
-    "target": "ES2019",
-    "module": "CommonJS",
-    "lib": ["ScriptHost", "ES2020"],
-    "allowJs": true,
-    "downlevelIteration": true,
-    "strict": true,
-    "strictPropertyInitialization": true,
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "sourceMap": true,
-    "skipLibCheck": true,
-    "baseUrl": "./",
-    "paths": {"src/*": ["src/*"]},
-    "plugins": [{"transform": "typescript-transform-paths", "afterDeclarations": true}]
-  },
-  "ts-node": {
-    "transpileOnly": true,
-    "require": ["typescript-transform-paths/register"]
-  }
+	"compilerOptions": {
+		"target": "ES2019",
+		"module": "CommonJS",
+		"lib": ["ScriptHost", "ES2020"],
+		"allowJs": true,
+		"downlevelIteration": true,
+		"strict": true,
+		"strictPropertyInitialization": true,
+		"moduleResolution": "node",
+		"esModuleInterop": true,
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"sourceMap": true,
+		"skipLibCheck": true,
+		"baseUrl": "./",
+		"paths": {"src/*": ["src/*"]},
+		"plugins": [{"transform": "typescript-transform-paths", "afterDeclarations": true}]
+	},
+	"ts-node": {
+		"transpileOnly": true,
+		"require": ["typescript-transform-paths/register"]
+	}
 }
