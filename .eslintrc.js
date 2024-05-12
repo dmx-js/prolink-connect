@@ -5,6 +5,7 @@ module.exports = {
 		'es6': true,
 		'jest/globals': true,
 	},
+	ignorePatterns: ['lib/**/*'],
 	extends: ['@evanpurkhiser/eslint-config/common'],
 	plugins: ['jest'],
 	rules: {
