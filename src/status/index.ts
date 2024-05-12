@@ -12,14 +12,14 @@ import {makeMediaSlotRequest} from './media';
 import {mediaSlotFromPacket, statusFromPacket} from './utils';
 
 interface StatusEvents {
-  /**
-   * Fired each time the CDJ reports its status
-   */
-  status: (status: CDJStatus.State) => void;
-  /**
-   * Fired when the CDJ reports its media slot status
-   */
-  mediaSlot: (info: MediaSlotInfo) => void;
+	/**
+	 * Fired each time the CDJ reports its status
+	 */
+	status: (status: CDJStatus.State) => void;
+	/**
+	 * Fired when the CDJ reports its media slot status
+	 */
+	mediaSlot: (info: MediaSlotInfo) => void;
 }
 
 type Emitter = StrictEventEmitter<EventEmitter, StatusEvents>;
@@ -30,59 +30,59 @@ type MediaSlotOptions = Parameters<typeof makeMediaSlotRequest>[0];
  * The status emitter will report every time a device status is recieved
  */
 class StatusEmitter {
-  #statusSocket: Socket;
-  /**
-   * The EventEmitter which reports the device status
-   */
-  #emitter: Emitter = new EventEmitter();
-  /**
-   * Lock used to avoid media slot query races
-   */
-  #mediaSlotQueryLock = new Mutex();
+	#statusSocket: Socket;
+	/**
+	 * The EventEmitter which reports the device status
+	 */
+	#emitter: Emitter = new EventEmitter();
+	/**
+	 * Lock used to avoid media slot query races
+	 */
+	#mediaSlotQueryLock = new Mutex();
 
-  /**
-   * @param statusSocket A UDP socket to recieve CDJ status packets on
-   */
-  constructor(statusSocket: Socket) {
-    this.#statusSocket = statusSocket;
-    statusSocket.on('message', this.#handleStatus);
-  }
+	/**
+	 * @param statusSocket A UDP socket to recieve CDJ status packets on
+	 */
+	constructor(statusSocket: Socket) {
+		this.#statusSocket = statusSocket;
+		statusSocket.on('message', this.#handleStatus);
+	}
 
-  // Bind public event emitter interface
-  on: Emitter['on'] = this.#emitter.addListener.bind(this.#emitter);
-  off: Emitter['off'] = this.#emitter.removeListener.bind(this.#emitter);
-  once: Emitter['once'] = this.#emitter.once.bind(this.#emitter);
+	// Bind public event emitter interface
+	on: Emitter['on'] = this.#emitter.addListener.bind(this.#emitter);
+	off: Emitter['off'] = this.#emitter.removeListener.bind(this.#emitter);
+	once: Emitter['once'] = this.#emitter.once.bind(this.#emitter);
 
-  #handleStatus = (message: Buffer) => {
-    const status = statusFromPacket(message);
+	#handleStatus = (message: Buffer) => {
+		const status = statusFromPacket(message);
 
-    if (status !== undefined) {
-      return this.#emitter.emit('status', status);
-    }
+		if (status !== undefined) {
+			return this.#emitter.emit('status', status);
+		}
 
-    // Media slot status is also reported on this socket
-    const mediaSlot = mediaSlotFromPacket(message);
+		// Media slot status is also reported on this socket
+		const mediaSlot = mediaSlotFromPacket(message);
 
-    if (mediaSlot !== undefined) {
-      return this.#emitter.emit('mediaSlot', mediaSlot);
-    }
+		if (mediaSlot !== undefined) {
+			return this.#emitter.emit('mediaSlot', mediaSlot);
+		}
 
-    return undefined;
-  };
+		return undefined;
+	};
 
-  /**
-   * Retrieve media slot status information.
-   */
-  async queryMediaSlot(options: MediaSlotOptions) {
-    const request = makeMediaSlotRequest(options);
+	/**
+	 * Retrieve media slot status information.
+	 */
+	async queryMediaSlot(options: MediaSlotOptions) {
+		const request = makeMediaSlotRequest(options);
 
-    const media = await this.#mediaSlotQueryLock.runExclusive(async () => {
-      await udpSend(this.#statusSocket, request, STATUS_PORT, options.device.ip.address);
-      return new Promise<MediaSlotInfo>(resolve => this.once('mediaSlot', resolve));
-    });
+		const media = await this.#mediaSlotQueryLock.runExclusive(async () => {
+			await udpSend(this.#statusSocket, request, STATUS_PORT, options.device.ip.address);
+			return new Promise<MediaSlotInfo>(resolve => this.once('mediaSlot', resolve));
+		});
 
-    return media;
-  }
+		return media;
+	}
 }
 
 export default StatusEmitter;

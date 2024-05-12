@@ -1,38 +1,34 @@
-import * as Sentry from '@sentry/node';
-import {Span} from '@sentry/tracing';
-
 import {Device, DeviceID, MediaSlot} from 'src/types';
-import {getSlotName} from 'src/utils';
 
 import {
-  fetchFile as fetchFileCall,
-  FileInfo,
-  getExports,
-  lookupPath,
-  makeProgramClient,
-  mountFilesystem,
+	fetchFile as fetchFileCall,
+	FileInfo,
+	getExports,
+	lookupPath,
+	makeProgramClient,
+	mountFilesystem,
 } from './programs';
 import {RetryConfig, RpcConnection, RpcProgram} from './rpc';
 import {mount, nfs} from './xdr';
 
 export interface FetchProgress {
-  read: number;
-  total: number;
+	read: number;
+	total: number;
 }
 
 interface ClientSet {
-  conn: RpcConnection;
-  mountClient: RpcProgram;
-  nfsClient: RpcProgram;
+	conn: RpcConnection;
+	mountClient: RpcProgram;
+	nfsClient: RpcProgram;
 }
 
 /**
  * The slot <-> mount name mapping is well known.
  */
 const slotMountMapping = {
-  [MediaSlot.USB]: '/C/',
-  [MediaSlot.SD]: '/B/',
-  [MediaSlot.RB]: '/',
+	[MediaSlot.USB]: '/C/',
+	[MediaSlot.SD]: '/B/',
+	[MediaSlot.RB]: '/',
 } as const;
 
 /**
@@ -55,40 +51,39 @@ const clientsCache = new Map<string, ClientSet>();
  * connections if the cached clients have disconnected.
  */
 async function getClients(address: string) {
-  const cachedSet = clientsCache.get(address);
+	const cachedSet = clientsCache.get(address);
 
-  if (cachedSet !== undefined && cachedSet.conn.connected) {
-    return cachedSet;
-  }
+	if (cachedSet !== undefined && cachedSet.conn.connected) {
+		return cachedSet;
+	}
 
-  // Cached socket is no longer connected. Remove and reconnect
-  if (cachedSet !== undefined) {
-    clientsCache.delete(address);
-  }
+	// Cached socket is no longer connected. Remove and reconnect
+	if (cachedSet !== undefined) {
+		clientsCache.delete(address);
+	}
 
-  const conn = new RpcConnection(address, retryConfig);
+	const conn = new RpcConnection(address, retryConfig);
 
-  const mountClient = await makeProgramClient(conn, {
-    id: mount.Program,
-    version: mount.Version,
-  });
+	const mountClient = await makeProgramClient(conn, {
+		id: mount.Program,
+		version: mount.Version,
+	});
 
-  const nfsClient = await makeProgramClient(conn, {
-    id: nfs.Program,
-    version: nfs.Version,
-  });
+	const nfsClient = await makeProgramClient(conn, {
+		id: nfs.Program,
+		version: nfs.Version,
+	});
 
-  const set = {conn, mountClient, nfsClient};
-  clientsCache.set(address, set);
+	const set = {conn, mountClient, nfsClient};
+	clientsCache.set(address, set);
 
-  return set;
+	return set;
 }
 
 interface GetRootHandleOptions {
-  device: Device;
-  slot: keyof typeof slotMountMapping;
-  mountClient: RpcProgram;
-  span?: Span;
+	device: Device;
+	slot: keyof typeof slotMountMapping;
+	mountClient: RpcProgram;
 }
 
 /**
@@ -106,45 +101,40 @@ const rootHandleCache = new Map<string, Map<MediaSlot, Buffer>>();
  *       verify this). It is up to the caller to clear the cache and get the
  *       new root handle in that case.
  */
-async function getRootHandle({device, slot, mountClient, span}: GetRootHandleOptions) {
-  const tx = span?.startChild({op: 'getRootHandle'});
+async function getRootHandle({device, slot, mountClient}: GetRootHandleOptions) {
+	const {address} = device.ip;
 
-  const {address} = device.ip;
+	const deviceSlotCache = rootHandleCache.get(address) ?? new Map<MediaSlot, Buffer>();
+	const cachedRootHandle = deviceSlotCache.get(slot);
 
-  const deviceSlotCache = rootHandleCache.get(address) ?? new Map<MediaSlot, Buffer>();
-  const cachedRootHandle = deviceSlotCache.get(slot);
+	if (cachedRootHandle !== undefined) {
+		return cachedRootHandle;
+	}
 
-  if (cachedRootHandle !== undefined) {
-    return cachedRootHandle;
-  }
+	const exports = await getExports(mountClient);
+	const targetExport = exports.find(e => e.filesystem === slotMountMapping[slot]);
 
-  const exports = await getExports(mountClient, tx);
-  const targetExport = exports.find(e => e.filesystem === slotMountMapping[slot]);
+	if (targetExport === undefined) {
+		return null;
+	}
 
-  if (targetExport === undefined) {
-    return null;
-  }
+	const rootHandle = await mountFilesystem(mountClient, targetExport);
 
-  const rootHandle = await mountFilesystem(mountClient, targetExport, tx);
+	deviceSlotCache.set(slot, rootHandle);
+	rootHandleCache.set(address, deviceSlotCache);
 
-  deviceSlotCache.set(slot, rootHandle);
-  rootHandleCache.set(address, deviceSlotCache);
-
-  tx?.finish();
-
-  return rootHandle;
+	return rootHandle;
 }
 
 interface FetchFileOptions {
-  device: Device;
-  slot: keyof typeof slotMountMapping;
-  path: string;
-  onProgress?: Parameters<typeof fetchFileCall>[2];
-  span?: Span;
+	device: Device;
+	slot: keyof typeof slotMountMapping;
+	path: string;
+	onProgress?: Parameters<typeof fetchFileCall>[2];
 }
 
 const badRoothandleError = (slot: MediaSlot, deviceId: DeviceID) =>
-  new Error(`The slot (${slot}) is not exported on Device ${deviceId}`);
+	new Error(`The slot (${slot}) is not exported on Device ${deviceId}`);
 
 /**
  * Fetch a file from a devices NFS server.
@@ -154,67 +144,52 @@ const badRoothandleError = (slot: MediaSlot, deviceId: DeviceID) =>
  *       important that when the device disconnects you call the {@link
  *       resetDeviceCache} function.
  */
-export async function fetchFile({
-  device,
-  slot,
-  path,
-  onProgress,
-  span,
-}: FetchFileOptions) {
-  const tx = span
-    ? span.startChild({op: 'fetchFile'})
-    : Sentry.startTransaction({name: 'fetchFile'});
+export async function fetchFile({device, slot, path, onProgress}: FetchFileOptions) {
+	const {mountClient, nfsClient} = await getClients(device.ip.address);
+	const rootHandle = await getRootHandle({device, slot, mountClient});
 
-  const {mountClient, nfsClient} = await getClients(device.ip.address);
-  const rootHandle = await getRootHandle({device, slot, mountClient, span: tx});
+	if (rootHandle === null) {
+		throw badRoothandleError(slot, device.id);
+	}
 
-  if (rootHandle === null) {
-    throw badRoothandleError(slot, device.id);
-  }
+	// It's possible that our roothandle is no longer valid, if we fail to lookup
+	// a path lets first try and clear our roothandle cache
+	let fileInfo: FileInfo | null = null;
 
-  // It's possible that our roothandle is no longer valid, if we fail to lookup
-  // a path lets first try and clear our roothandle cache
-  let fileInfo: FileInfo | null = null;
+	try {
+		fileInfo = await lookupPath(nfsClient, rootHandle, path);
+	} catch {
+		rootHandleCache.delete(device.ip.address);
+		const rootHandle = await getRootHandle({device, slot, mountClient});
 
-  try {
-    fileInfo = await lookupPath(nfsClient, rootHandle, path, tx);
-  } catch {
-    rootHandleCache.delete(device.ip.address);
-    const rootHandle = await getRootHandle({device, slot, mountClient, span: tx});
+		if (rootHandle === null) {
+			throw badRoothandleError(slot, device.id);
+		}
 
-    if (rootHandle === null) {
-      throw badRoothandleError(slot, device.id);
-    }
+		// Desperately try once more to lookup the file
+		fileInfo = await lookupPath(nfsClient, rootHandle, path);
+	}
 
-    // Desperately try once more to lookup the file
-    fileInfo = await lookupPath(nfsClient, rootHandle, path, tx);
-  }
+	const file = await fetchFileCall(nfsClient, fileInfo, onProgress);
 
-  const file = await fetchFileCall(nfsClient, fileInfo, onProgress, tx);
-
-  tx.setData('path', path);
-  tx.setData('slot', getSlotName(slot));
-  tx.setData('size', fileInfo.size);
-  tx.finish();
-
-  return file;
+	return file;
 }
 
 /**
  * Clear the cached NFS connection and root filehandle for the given device
  */
 export function resetDeviceCache(device: Device) {
-  clientsCache.delete(device.ip.address);
-  rootHandleCache.delete(device.ip.address);
+	clientsCache.delete(device.ip.address);
+	rootHandleCache.delete(device.ip.address);
 }
 
 /**
  * Configure the retry strategy for making NFS calls using this module
  */
 export function configureRetryStrategy(config: RetryConfig) {
-  retryConfig = config;
+	retryConfig = config;
 
-  for (const client of clientsCache.values()) {
-    client.conn.retryConfig = config;
-  }
+	for (const client of clientsCache.values()) {
+		client.conn.retryConfig = config;
+	}
 }

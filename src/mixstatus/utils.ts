@@ -3,9 +3,9 @@ import {CDJStatus} from 'src/types';
 const playingStates = [CDJStatus.PlayState.Playing, CDJStatus.PlayState.Looping];
 
 const stoppingStates = [
-  CDJStatus.PlayState.Cued,
-  CDJStatus.PlayState.Ended,
-  CDJStatus.PlayState.Loading,
+	CDJStatus.PlayState.Cued,
+	CDJStatus.PlayState.Ended,
+	CDJStatus.PlayState.Loading,
 ];
 
 /**

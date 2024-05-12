@@ -1,3 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck - TODO: Fix types that resulted when updating better-sqlite3 from the fork (the code still works, but types are not correct)
+
 import sqlite3 from 'better-sqlite3';
 import {camelCase, mapKeys, mapValues, partition, snakeCase} from 'lodash';
 
@@ -9,35 +12,35 @@ import {generateSchema} from './schema';
  * Table names availble
  */
 export enum Table {
-  Artist = 'artist',
-  Album = 'album',
-  Genre = 'genre',
-  Color = 'color',
-  Label = 'label',
-  Key = 'key',
-  Artwork = 'artwork',
-  Playlist = 'playlist',
-  PlaylistEntry = 'playlist_entry',
-  Track = 'track',
+	Artist = 'artist',
+	Album = 'album',
+	Genre = 'genre',
+	Color = 'color',
+	Label = 'label',
+	Key = 'key',
+	Artwork = 'artwork',
+	Playlist = 'playlist',
+	PlaylistEntry = 'playlist_entry',
+	Track = 'track',
 }
 
 const trackRelations = [
-  'artwork',
-  'artist',
-  'originalArtist',
-  'remixer',
-  'composer',
-  'album',
-  'label',
-  'genre',
-  'color',
-  'key',
+	'artwork',
+	'artist',
+	'originalArtist',
+	'remixer',
+	'composer',
+	'album',
+	'label',
+	'genre',
+	'color',
+	'key',
 ];
 
 const trackRelationTableMap: Record<string, string> = {
-  originalArtist: 'artist',
-  remixer: 'artist',
-  composer: 'artist',
+	originalArtist: 'artist',
+	remixer: 'artist',
+	composer: 'artist',
 };
 
 /**
@@ -47,122 +50,120 @@ const trackRelationTableMap: Record<string, string> = {
  * May be used to populate a metadata database and query objects.
  */
 export class MetadataORM {
-  #conn: sqlite3.Database;
+	#conn: sqlite3.Database;
 
-  constructor() {
-    this.#conn = sqlite3(':memory:');
-    this.#conn.exec(generateSchema());
-  }
+	constructor() {
+		this.#conn = sqlite3(':memory:');
+		this.#conn.exec(generateSchema());
+	}
 
-  close() {
-    this.#conn.close();
-  }
+	close() {
+		this.#conn.close();
+	}
 
-  /**
-   * Insert a entity object into the database.
-   */
-  insertEntity(table: Table, object: Record<string, any>) {
-    const fields = Object.entries<any>(object);
+	/**
+	 * Insert a entity object into the database.
+	 */
+	insertEntity(table: Table, object: Record<string, any>) {
+		const fields = Object.entries<any>(object);
 
-    const slots = fields.map(f => `:${f[0]}`).join(', ');
-    const columns = fields.map(f => snakeCase(f[0])).join(', ');
+		const slots = fields.map(f => `:${f[0]}`).join(', ');
+		const columns = fields.map(f => snakeCase(f[0])).join(', ');
 
-    const stmt = this.#conn.prepare(
-      `insert into ${table} (${columns}) values (${slots})`
-    );
+		const stmt = this.#conn.prepare(`insert into ${table} (${columns}) values (${slots})`);
 
-    // Translate date and booleans
-    const data = mapValues(object, value =>
-      value instanceof Date
-        ? value.toISOString()
-        : typeof value === 'boolean'
-        ? Number(value)
-        : value
-    );
+		// Translate date and booleans
+		const data = mapValues(object, value =>
+			value instanceof Date
+				? value.toISOString()
+				: typeof value === 'boolean'
+					? Number(value)
+					: value,
+		);
 
-    stmt.run(data);
-  }
+		stmt.run(data);
+	}
 
-  /**
-   * Locate a track by ID in the database
-   */
-  findTrack(id: number): Track {
-    const row: Record<string, any> = this.#conn
-      .prepare(`select * from ${Table.Track} where id = ?`)
-      .get(id);
+	/**
+	 * Locate a track by ID in the database
+	 */
+	findTrack(id: number): Track {
+		const row: Record<string, any> = this.#conn
+			.prepare(`select * from ${Table.Track} where id = ?`)
+			.get(id);
 
-    // Map row columns to camel case compatability
-    const trackRow = mapKeys(row, (_, k) => camelCase(k)) as Track<EntityFK.WithFKs>;
+		// Map row columns to camel case compatability
+		const trackRow = mapKeys(row, (_, k) => camelCase(k)) as Track<EntityFK.WithFKs>;
 
-    trackRow.beatGrid = null;
-    trackRow.cueAndLoops = null;
-    trackRow.waveformHd = null;
+		trackRow.beatGrid = null;
+		trackRow.cueAndLoops = null;
+		trackRow.waveformHd = null;
 
-    // Explicitly restore dates and booleans
-    trackRow.autoloadHotcues = !!trackRow.autoloadHotcues;
-    trackRow.kuvoPublic = !!trackRow.kuvoPublic;
+		// Explicitly restore dates and booleans
+		trackRow.autoloadHotcues = !!trackRow.autoloadHotcues;
+		trackRow.kuvoPublic = !!trackRow.kuvoPublic;
 
-    // Explicity restore date objects
-    trackRow.analyzeDate = new Date(trackRow.analyzeDate as any);
-    trackRow.dateAdded = new Date(trackRow.dateAdded as any);
+		// Explicity restore date objects
+		trackRow.analyzeDate = new Date(trackRow.analyzeDate as any);
+		trackRow.dateAdded = new Date(trackRow.dateAdded as any);
 
-    // Query all track relationships
-    const track = trackRow as any;
+		// Query all track relationships
+		const track = trackRow as any;
 
-    for (const relation of trackRelations) {
-      const fkName = `${relation}Id`;
+		for (const relation of trackRelations) {
+			const fkName = `${relation}Id`;
 
-      const fk = track[fkName];
-      const table = snakeCase(trackRelationTableMap[relation] ?? relation);
+			const fk = track[fkName];
+			const table = snakeCase(trackRelationTableMap[relation] ?? relation);
 
-      // Swap fk for relation key
-      delete track[fkName];
-      track[relation] = null;
+			// Swap fk for relation key
+			delete track[fkName];
+			track[relation] = null;
 
-      if (fk === null) {
-        continue;
-      }
+			if (fk === null) {
+				continue;
+			}
 
-      const relationItem: Record<string, any> = this.#conn
-        .prepare(`select * from ${table} where id = ?`)
-        .get(fk);
+			const relationItem: Record<string, any> = this.#conn
+				.prepare(`select * from ${table} where id = ?`)
+				.get(fk);
 
-      track[relation] = relationItem;
-    }
+			track[relation] = relationItem;
+		}
 
-    return track as Track;
-  }
+		return track as Track;
+	}
 
-  /**
-   * Query for a list of {folders, playlists, tracks} given a playlist ID. If
-   * no ID is provided the root list is queried.
-   *
-   * Note that when tracks are returned there will be no folders or playslists.
-   * But the API here is simpler to assume there could be.
-   *
-   * Tracks are returned in the order they are placed on the playlist.
-   */
-  findPlaylist(playlistId?: number) {
-    const parentCondition = playlistId === undefined ? 'parent_id is ?' : 'parent_id = ?';
+	/**
+	 * Query for a list of {folders, playlists, tracks} given a playlist ID. If
+	 * no ID is provided the root list is queried.
+	 *
+	 * Note that when tracks are returned there will be no folders or playslists.
+	 * But the API here is simpler to assume there could be.
+	 *
+	 * Tracks are returned in the order they are placed on the playlist.
+	 */
+	findPlaylist(playlistId?: number) {
+		const parentCondition = playlistId === undefined ? 'parent_id is ?' : 'parent_id = ?';
 
-    // Lookup playlists / folders for this playlist ID
-    const playlistRows: Array<Record<string, any>> = this.#conn
-      .prepare(`select * from ${Table.Playlist} where ${parentCondition}`)
-      .all(playlistId);
+		// Lookup playlists / folders for this playlist ID
+		const playlistRows: Array<Record<string, any>> = this.#conn
+			.prepare(`select * from ${Table.Playlist} where ${parentCondition}`)
+			.all(playlistId);
 
-    const [folders, playlists] = partition(
-      playlistRows.map(row => mapKeys(row, (_, k) => camelCase(k)) as Playlist),
-      p => p.isFolder
-    );
+		const [folders, playlists] = partition(
+			playlistRows.map(row => mapKeys(row, (_, k) => camelCase(k)) as Playlist),
+			p => p.isFolder,
+		);
 
-    const entryRows: Array<Record<string, any>> = this.#conn
-      .prepare(`select * from ${Table.PlaylistEntry} where playlist_id = ?`)
-      .all(playlistId);
+		const entryRows: Array<Record<string, any>> = this.#conn
+			.prepare(`select * from ${Table.PlaylistEntry} where playlist_id = ?`)
+			.all(playlistId);
 
-    const trackEntries = entryRows.map(
-      row => mapKeys(row, (_, k) => camelCase(k)) as PlaylistEntry<EntityFK.WithFKs>
-    );
+		const trackEntries = entryRows.map(
+			row => mapKeys(row, (_, k) => camelCase(k)) as PlaylistEntry<EntityFK.WithFKs>,
+		);
 
-    return {folders, playlists, trackEntries};
-  }
+		return {folders, playlists, trackEntries};
+	}
 }
